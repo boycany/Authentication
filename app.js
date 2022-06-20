@@ -10,6 +10,10 @@ const flash = require("connect-flash");
 //mongodb models
 const User = require("./models/user");
 
+//bcrypt
+const bcrypt = require("bcrypt");
+const saltRounds = 10;
+
 app.set("view engine", "ejs");
 app.use(cookieParser(process.env.SECRET));
 app.use(
@@ -48,11 +52,26 @@ app.post("/login", async (req, res, next) => {
   let { username, password } = req.body;
   try {
     let foundUser = await User.findOne({ username });
-    if (foundUser && password === foundUser.password) {
-      res.render("secret");
+    if (foundUser) {
+      bcrypt.compare(password, foundUser.password, (err, result) => {
+        if (err) {
+          next(err);
+        }
+        if (result === true) {
+          res.render("secret");
+        } else {
+          res.send("USERNAME or PASSWORD not correct");
+        }
+      });
     } else {
-      res.send("Username or Passowrd not correct.");
+      res.send("USERNAME or PASSWORD not correct");
     }
+
+    // if (foundUser && password === foundUser.password) {
+    //   res.render("secret");
+    // } else {
+    //   res.send("Username or Passowrd not correct.");
+    // }
   } catch (err) {
     next(err);
   }
@@ -65,19 +84,33 @@ app.get("/signup", (req, res) => {
 app.post("/signup", (req, res, next) => {
   console.log(req.body);
   let { username, password } = req.body;
-  let newUser = new User({ username, password });
-  try {
-    newUser
-      .save()
-      .then(() => {
-        res.send("Data has been saved.");
-      })
-      .catch((e) => {
-        res.send("Error.");
-      });
-  } catch (err) {
-    next(err);
-  }
+
+  bcrypt.genSalt(saltRounds, (err, salt) => {
+    if (err) {
+      next(err);
+    }
+    console.log("salt: >> " + salt);
+    bcrypt.hash(password, salt, (err, hash) => {
+      if (err) {
+        next(err);
+      }
+
+      console.log("hash: >> " + hash);
+      let newUser = new User({ username, password: hash });
+      try {
+        newUser
+          .save()
+          .then(() => {
+            res.send("Data has been saved.");
+          })
+          .catch((e) => {
+            res.send("Error.");
+          });
+      } catch (err) {
+        next(err);
+      }
+    });
+  });
 });
 
 app.get("/verifyUser", (req, res) => {
