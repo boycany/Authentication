@@ -28,6 +28,7 @@ app.use(flash());
 app.use(express.urlencoded({ extended: true }));
 
 //自訂 middleware 來控制: 必須登入才可以進入 /secret 的路由
+//並且會在session裡儲存登入紀錄(sid)，就不需要再重新登入一遍
 const requireLogin = (req, res, next) => {
   if (!req.session.isVerified) {
     res.redirect("login");
