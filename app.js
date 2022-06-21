@@ -27,6 +27,15 @@ app.use(
 app.use(flash());
 app.use(express.urlencoded({ extended: true }));
 
+//自訂 middleware 來控制: 必須登入才可以進入 /secret 的路由
+const requireLogin = (req, res, next) => {
+  if (!req.session.isVerified) {
+    res.redirect("login");
+  } else {
+    next(); //要記得寫 next!! 在 secret 那段的程式碼才會往下跑
+  }
+};
+
 mongoose
   .connect("mongodb://localhost:27017/test", {
     useNewUrlParser: true,
@@ -40,8 +49,13 @@ mongoose
   });
 
 app.get("/", (req, res) => {
-  req.flash("success_msg", "Successfully get to the homepage.");
-  res.send("Hi, " + req.flash("success_msg"));
+  // req.flash("success_msg", "Successfully get to the homepage.");
+  // res.send("Hi, " + req.flash("success_msg"));
+  res.send("Homepage.");
+});
+
+app.get("/secret", requireLogin, (req, res) => {
+  res.render("secret");
 });
 
 app.get("/login", (req, res) => {
@@ -58,7 +72,8 @@ app.post("/login", async (req, res, next) => {
           next(err);
         }
         if (result === true) {
-          res.render("secret");
+          req.session.isVerified = true;
+          res.redirect("secret");
         } else {
           res.send("USERNAME or PASSWORD not correct");
         }
@@ -81,36 +96,48 @@ app.get("/signup", (req, res) => {
   res.render("signup");
 });
 
-app.post("/signup", (req, res, next) => {
+app.post("/signup", async (req, res, next) => {
   console.log(req.body);
   let { username, password } = req.body;
 
-  bcrypt.genSalt(saltRounds, (err, salt) => {
-    if (err) {
-      next(err);
-    }
-    console.log("salt: >> " + salt);
-    bcrypt.hash(password, salt, (err, hash) => {
-      if (err) {
-        next(err);
-      }
+  //先去資料庫比對，是否有被註冊過同樣的 username
+  try {
+    let foundUser = await User.findOne({ username });
+    if (foundUser) {
+      res.send("Username has been taken.");
+    } else {
+      //加密
+      bcrypt.genSalt(saltRounds, (err, salt) => {
+        if (err) {
+          next(err);
+        }
+        // console.log("salt: >> " + salt);
+        bcrypt.hash(password, salt, (err, hash) => {
+          if (err) {
+            next(err);
+          }
+          // console.log("hash: >> " + hash);
 
-      console.log("hash: >> " + hash);
-      let newUser = new User({ username, password: hash });
-      try {
-        newUser
-          .save()
-          .then(() => {
-            res.send("Data has been saved.");
-          })
-          .catch((e) => {
-            res.send("Error.");
-          });
-      } catch (err) {
-        next(err);
-      }
-    });
-  });
+          //存進db
+          let newUser = new User({ username, password: hash });
+          try {
+            newUser
+              .save()
+              .then(() => {
+                res.send("Data has been saved.");
+              })
+              .catch((e) => {
+                res.send("Error.");
+              });
+          } catch (err) {
+            next(err);
+          }
+        });
+      });
+    }
+  } catch (err) {
+    next(err);
+  }
 });
 
 app.get("/verifyUser", (req, res) => {
